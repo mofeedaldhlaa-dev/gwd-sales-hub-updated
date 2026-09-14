@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 4 backend testing for Jawad Net ERP v1.4. Added /app/backend/tests/test_iteration4.py with 10 new tests covering: (a) BUG FIX for /api/public/card-order/login rate-limit on non-existent phones, (b) POST /api/sales mandatory customer_id + sale_type validations, (c) PUT /api/purchases/{id} edit endpoint with supplier balance auto-adjust + cancel & permission gates. Verified the reported bug (non-existent phones did not count toward rate limit) reproduced on original code, then FIXED in server.py public_login and confirmed 6th attempt now returns 429. Result: 10/10 new tests pass; full regression suite 67/67 pass sequentially.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/purchases/{id}", "issue": "_adjust_party_balance is called BEFORE purchases.update_one — if update_one later fails, supplier balance/ledger would be out of sync (same non-atomic pattern as sales edit). Consider transactional wrap or rollback."},
+      {"endpoint": "PUT /api/purchases/{id}", "issue": "No validation that new_paid >= 0 or new_paid <= new_total. A negative paid or paid greater than total is accepted, producing weird remaining values."},
+      {"endpoint": "POST /api/public/card-order/login", "issue": "Non-existent-phone attempts now count, but the 404 still leaks whether a phone exists (attacker can differentiate 404 vs 401). Consider returning same status for both to prevent phone enumeration."},
+      {"endpoint": "POST /api/purchases/{id}/cancel", "issue": "Not implemented (returns 404). Test worked around by direct DB status update. If cancel purchase is expected functionality, endpoint needs to be added."},
+      {"endpoint": "PUT /api/purchases/{id}", "issue": "No re-check that user is editing an existing supplier's purchase; supplier balance adjust is skipped for purchases with supplier_id=None (walk-in), which is fine, but audit does not record old_paid/old_discount — only old_total."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter4.xml",
+    "/app/test_reports/pytest/iter4_all.xml"
+  ],
+  "action_items": [
+    "None critical — fixed the public login non-existent-phone rate-limit bug in server.py public_login (added counter increment + 5-fail block for phones not in customers collection).",
+    "Consider wrapping edit_purchase in a transaction: _adjust_party_balance runs before purchases.update_one; failure between the two leaves supplier ledger inconsistent.",
+    "Consider adding POST /api/purchases/{id}/cancel endpoint (currently missing; only sales have cancel).",
+    "Consider unifying 404/401 responses on public login to prevent phone enumeration."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 1587 lines — split recommendation from iter 2/3 still open.",
+    "public_login fix: added 5-fail counter for non-existent phones, uses same public_blocks doc and identical 429 detail message.",
+    "PUT /purchases/{id} audit only stores {old_total, new_total}; missing old_paid/new_paid/old_discount which would be needed for reconciliation.",
+    "SaleIn.sale_type is a plain str with no enum validation at pydantic level — validation happens in the handler. Consider Literal['cash','credit'] for automatic 422 error."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed public_login: rate-limit non-existent phones)",
+    "/app/backend/tests/test_iteration4.py (new — 10 tests)"
+  ],
+  "success_rate": {"backend": "100% (67/67 sequential)", "frontend": "n/a (not requested)"},
+  "test_credentials": "admin / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Each test uses unique uuid-based phones/names; seeds category/stock/purchase/sale per test. No cleanup done aside from public_blocks entries used in login tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_iteration4.py connects directly to Mongo to clean/inspect public_blocks entries for non-existent phone tests. The bug reported in the request (5 wrong attempts on non-existent phone should register but curl showed only 404 on 6th) was reproduced and FIXED in /app/backend/server.py public_login: now increments failed counter and blocks at 5 for phones not in customers collection. All iteration 4 endpoints work as spec'd.",
+  "rca of the issue": "RCA of the public-login rate-limit bug: The original public_login handler raised HTTPException(404) immediately when customers.find_one returned None, BEFORE any public_blocks increment logic. So attempts against non-existent phones never populated public_blocks.failed, and the 6th attempt continued to return 404 rather than 429. Fix: inside the `if not customer:` branch, before raising 404, upsert public_blocks with incremented `failed` counter and, at failed>=5, set blocked_until=+24h (same shape as wrong-password path), and also emit a notification. Verified by test_five_wrong_attempts_on_nonexistent_phone_returns_429_on_sixth (5 x 404 then 429 with detail 'تم حظر الإدخال...'). Regression test for valid phone (test_valid_phone_still_returns_401_and_increments) confirms wrong-password path still works and successful login still resets counter."
+}

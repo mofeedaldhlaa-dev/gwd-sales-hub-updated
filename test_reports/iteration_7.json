@@ -1,0 +1,25 @@
+{
+  "summary": "Verified fix for /order 'إنشاء حساب' button. Backend endpoint /api/public/customer/register-request works correctly (5/5 pytest cases pass) and frontend now calls the correct path. E2E on mobile viewport 375x800: unique registration succeeds with success toast + dialog closes; duplicate phone (777777777) shows exact Arabic error 'رقم الهاتف مرتبط بحساب عميل آخر.'. Old /register path returns 404 as expected. No requests observed to the old path.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "RegisterForm/ForgotPassword Dialog", "issues": ["React a11y warning: Missing Description or aria-describedby for DialogContent (non-blocking)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_register_request.py", "/app/test_reports/pytest/register_request.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RegisterForm success path always opens WhatsApp via openWhatsApp(ADMIN_WHATSAPP,...) even though backend already creates a notification – acceptable if intentional; otherwise could double-notify.",
+    "Consider adding aria-describedby to DialogContent to fix a11y console warnings."
+  ],
+  "updated_files": ["/app/backend/tests/test_register_request.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "duplicate phone: 777777777",
+  "seed_data_creation": "Each success test creates a register_request row in DB (phone starts with 9 + unique digits, name prefix 'عميل اختبار TEST' or 'REG_<ts>'). Not cleaned up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoint POST /api/public/customer/register-request is stable. Frontend RegisterForm in /app/frontend/src/pages/PublicOrder.jsx line 348 correctly calls the new path. Both cases 5 & 6 verified via Playwright with network capture confirming URL and toast text.",
+  "rca of the issue": "Root cause was mismatched path between frontend (/public/customer/register) and backend (/public/customer/register-request). Fix in PublicOrder.jsx:348 aligned frontend to backend. Verified by network capture showing correct URL and both success + duplicate-phone toasts."
+}

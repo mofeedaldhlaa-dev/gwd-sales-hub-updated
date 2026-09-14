@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 3 backend testing for Jawad Net ERP. Added /app/backend/tests/test_iteration3.py with 11 new tests covering PUT /api/sales/{id}, PUT /api/receipts/{id}, and GET /api/customers/blocked/list plus regression on unblock and expired-block login. Result: 11/11 new pass; combined suite 57/57 pass when executed sequentially. Only issue found: pre-existing flakiness in backend_test.py::TestSales::test_sale_with_numbered_and_balance when xdist parallel scheduling interleaves module-scoped test_customer with other tests that pay/receipt against it (balance became 150 instead of >=200). Not introduced by iteration 3.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/customers/{id}", "issue": "No single-customer GET endpoint (returns 405). Frontend must fetch full list. Consider adding for edit-detail screens."},
+      {"endpoint": "backend/tests/backend_test.py::test_sale_with_numbered_and_balance", "issue": "Flaky under pytest-xdist parallel scheduling due to shared module-scoped test_customer fixture. Passes reliably in sequential run. Suggest making the fixture function-scoped or asserting exact expected balance delta rather than an accumulated total."},
+      {"endpoint": "PUT /api/sales/{id} audit log", "issue": "Audit stores old_value as {\"old\":{...}} instead of the requested old_amount pattern; not part of test spec for sale-edit (spec only required receipt audit fields) so not failing but inconsistent with receipt-edit audit shape."},
+      {"endpoint": "PUT /api/receipts/{id}", "issue": "No credit-limit re-check when a receipt reduction increases customer debt beyond limit. Product decision, but note."},
+      {"endpoint": "GET /api/customers/blocked/list", "issue": "blocked_until stored as ISO string and compared via {$gt: now_iso}. Works because ISO-8601 UTC is lexically ordered, but brittle if timezone offsets ever differ across writers. Same concern from iteration 2."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter3.xml",
+    "/app/test_reports/pytest/iter3_all.xml"
+  ],
+  "action_items": [
+    "Optionally add GET /api/customers/{id} to avoid list-scan for detail lookups.",
+    "Fix flaky backend_test.py::test_sale_with_numbered_and_balance by scoping test_customer function-level OR asserting balance delta.",
+    "Align sale-edit audit shape with receipt-edit (both should use old_amount/new_amount or both use {old:{...}, new:{...}}).",
+    "Consider re-checking customer credit_limit when editing a receipt (decreasing amount can push customer over limit)."
+  ],
+  "critical_code_review_comments": [
+    "PUT /sales/{id} correctly rechecks credit limit against DIFF only (not new_bal from scratch), preserving existing over-limit sales while blocking further worsening. Correct.",
+    "_adjust_party_balance is called BEFORE the sales update_one — if update_one later fails, ledger + customer balance would be out of sync. Consider wrapping in a transaction or rollback ledger insert on subsequent failure.",
+    "PUT /receipts/{id} sign logic: sign = -1 for receipt/payment. diff = new-old. If amount increases by 30 for a receipt, effect is sign*diff = -30 which subtracts more from customer balance. Verified via test test_edit_receipt_amount_adjusts_balance.",
+    "GET /customers/blocked/list uses N+1 query (one customers.find_one per block). Acceptable for tens of blocks; if list grows, batch with $in.",
+    "server.py is 1537 lines (grew 81 lines). Reiterating iteration 2 suggestion to split into modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py (new)"
+  ],
+  "success_rate": {"backend": "100% (57/57 sequential; 56/57 parallel due to pre-existing flake)", "frontend": "n/a (not requested)"},
+  "test_credentials": "admin / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Each test uses unique phones/names via uuid; seeds category+stock+sale/receipt per test. No cleanup (safe).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_iteration3.py imports pymongo and connects directly to MONGO_URL from backend/.env to simulate expired blocks (blocked_until in past). Tests are idempotent — unique uuid-based phones prevent collision. When running full suite with xdist parallel workers, backend_test.py::test_sale_with_numbered_and_balance may fail intermittently — run with -o addopts='' to disable xdist, or fix the fixture. All iteration 3 endpoints (PUT /sales/{id}, PUT /receipts/{id}, GET /customers/blocked/list) work as spec'd.",
+  "rca of the issue": "No critical bug found in iteration 3 code. Only pre-existing flake: TestSales::test_sale_with_numbered_and_balance in backend_test.py uses a module-scoped test_customer fixture. Under xdist LoadScope scheduling, other tests in the same class (e.g., receipt/payment tests) can execute in an order that leaves the customer's balance below the asserted lower bound. Root cause: state-sharing across tests. Mitigation: scope test_customer to function, or assert the delta instead of the running balance."
+}

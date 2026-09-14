@@ -1,0 +1,24 @@
+{
+  "summary": "Frontend responsive testing across viewports 320/375/414/1920 completed. All 17 pages (/, /sales, /purchases, /customers, /suppliers, /cards, /categories, /stock, /receipts, /orders, /reports, /users, /blocked, /notifications, /audit, /settings, /order) show ZERO horizontal page-level overflow at 320/375/414 (document.scrollWidth == window.innerWidth). Mobile card view active on /sales, /purchases, /receipts, /orders, /users, /suppliers, /blocked (tables hidden). Add dialogs (customer/user/supplier/category) render at grid-cols-1 (293px single column) and stay inside 375px viewport (left=16, right=359). /sales/new and /purchases/new have no overflow. /order invalid login shows inline error 'رقم الهاتف أو كلمة المرور غير صحيحة' via po-login-error without any redirect. Header at 375 exposes menu-btn, sync-btn, bell-btn, logout-btn. Dashboard stats grid at 375 = 2 columns. Desktop 1920 regression: sidebar visible, sales table rendered as table. No console JS errors (only recharts width -1 warnings on very narrow viewport - non-critical).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard (mobile 320/375)", "issues": ["Recharts logs width(-1)/height(-1) warnings when chart container has 0 width during initial mobile render — cosmetic warning only, chart still renders. Consider adding minWidth to ResponsiveContainer."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Recharts ResponsiveContainer emits width(-1) warnings on narrow viewports — pass minWidth or fixed aspect to silence."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "test_credentials": "admin/admin123 (JWT stored in localStorage key 'jwd_token')",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Responsive work verified end-to-end. jwd_token in localStorage is required for /api authenticated pages. Login endpoint returns {token, user}. Mobile card views detected by table-parent being display:none on <md breakpoint (works). /order public flow uses data-testid=po-login-form and po-login-error and correctly stays on /order after invalid login.",
+  "rca of the issue": "N/A — all responsive acceptance criteria met."
+}

@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 2 backend regression + new feature testing for Jawad Net ERP. Added /app/backend/tests/test_new_features.py with 17 tests covering: rate-limit 5-fail block on public login + unblock, register-request full flow (approve with customer_type/duplicate-phone/reject), customer_type field on POST/PUT customers, customer password reveal endpoint, categories dual pricing + low_stock_numbered/low_stock_quantity, purchases with use_numbered creating available cards (stock qty NOT bumped), backup export (no _id leaks) + restore (creates snapshot), reset-data guardrails (wrong creds 401, no confirm 400, no auth), dashboard pending_register_requests, change-password creates notification, and sales idempotency regression. Discovered and FIXED one bug: GET /api/audit returned 500 because clean_doc only stripped top-level _id, but audit_logs contained nested ObjectId in old_value (e.g. from card update). Made clean_doc recursive. Final run: 46/46 tests pass (17 new + 29 previous regression suite).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/audit", "issue": "FIXED: 500 error when any audit_log doc had nested _id in old_value/new_value. Root cause: clean_doc was shallow. Made it recursive."},
+      {"endpoint": "POST /api/backup/restore", "issue": "The restore replaces collections listed in payload.data only (not full list); pre-restore snapshot only snapshots 12 collections (misses register_requests, card_order_attempts, public_blocks, users, settings). Documented, not blocking."},
+      {"endpoint": "POST /api/public/card-order/login rate limit", "issue": "Reset happens only via unblock; blocked_until stored as ISO string not datetime, string comparison works while both are ISO-8601 UTC but relies on lexical ordering. Fine, but brittle if timezone offset differs."},
+      {"endpoint": "POST /api/customers passwords", "issue": "STILL plaintext (iteration_1 noted). New /customers/{id}/password reveal endpoint intentionally returns plaintext — acknowledged product decision, but security concern remains."},
+      {"endpoint": "POST /api/settings/reset-data", "issue": "Does not require idempotency/nonce; verified guardrails work (401 wrong creds, 400 without confirm, 401/403 unauth). Actual wipe path NOT executed to preserve test data (per request)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter2_all.xml"
+  ],
+  "action_items": [
+    "Consider extending pre-restore snapshot in /api/backup/restore to include register_requests, card_order_attempts, public_blocks, users, settings for full round-trip safety.",
+    "Hash customer passwords with bcrypt; if reveal endpoint is required, store an admin-decryptable secret or replace with a reset-and-notify flow.",
+    "Store public_blocks.blocked_until as datetime (or compare via datetime.fromisoformat) to avoid string-ordering brittleness."
+  ],
+  "critical_code_review_comments": [
+    "clean_doc was previously shallow — fixed to be recursive. Any endpoint returning nested user-supplied documents (audit_logs, backup export, notifications with embedded snapshots) would 500 if raw Mongo docs bubbled up.",
+    "server.py is now 1456 lines — split into modules (auth, customers, sales, purchases, public, reports, backup, settings).",
+    "/api/customers/{cid}/password returns plaintext password — high security risk if exposed to non-admin roles. Permission is 'customers' which likely includes cashier roles; consider elevating to admin-only.",
+    "Backup restore does not validate schema of incoming data — malformed payload could corrupt collections.",
+    "reset-data wipe list omits card_categories rebuild — after wipe, categories are gone but stock reference would 404; consider clearer messaging or re-seed base data."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new)",
+    "/app/backend/server.py (clean_doc made recursive)"
+  ],
+  "success_rate": {"backend": "100% (46/46)", "frontend": "n/a (not requested)"},
+  "test_credentials": "admin / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Each run creates TEST_-prefixed customers, categories, register-requests. Not cleaned up (safe for regression). One customer per test uses unique phone to avoid 24h block collisions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_new_features.py is idempotent (uses unique uuid-based phones/names). Rate-limit test uses a fresh customer each run so block from previous run won't interfere. Backup restore test only touches notifications collection (safe). reset-data actual-wipe path intentionally NOT exercised. clean_doc is now recursive — any future _id serialization bugs should be checked in the specific endpoint's response construction rather than clean_doc.",
+  "rca of the issue": "GET /api/audit -> 500 ValueError: 'ObjectId' object is not iterable. Reproduction: any audit_logs doc with nested _id in old_value/new_value (e.g., card update audit stores the pre-update card doc including its Mongo _id). Root cause: clean_doc only did doc.pop('_id', None) — a single-level strip. jsonable_encoder then hit the nested ObjectId. Mitigation: made clean_doc recursively strip _id from all nested dicts/lists."
+}
