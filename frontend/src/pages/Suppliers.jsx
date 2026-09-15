@@ -8,7 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { fmt } from "@/lib/utils";
-import { Plus, Edit } from "lucide-react";
+import { Plus, Edit, Printer } from "lucide-react";
+import { printStatement } from "@/lib/print";
+import { useAuth } from "@/lib/auth";
 
 function SupplierForm({ initial, onSaved, onClose }) {
   const [f, setF] = useState(initial || { name: "", phone: "", credit_limit: 0, opening_balance: 0, address: "", notes: "", status: "active" });
@@ -41,11 +43,16 @@ function SupplierForm({ initial, onSaved, onClose }) {
 }
 
 export default function Suppliers() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState(null);
   const load = async () => { const r = await api.get("/suppliers"); setItems(r.data); };
   useEffect(() => { load(); }, []);
+  const printSupplierStatement = async (supplier) => {
+    const r = await api.get(`/suppliers/${supplier.id}/statement`);
+    printStatement({ customer: r.data.supplier, entries: r.data.entries, accountType: "supplier", username: user?.name || user?.username });
+  };
   return (
     <div className="space-y-4" data-testid="suppliers-page">
       <div className="flex justify-end">
@@ -64,7 +71,7 @@ export default function Suppliers() {
               <tr key={s.id} className="border-t border-slate-100">
                 <td className="p-3 font-medium">{s.name}</td><td className="p-3">{s.phone}</td>
                 <td className="p-3 num">{fmt(s.credit_limit)}</td><td className="p-3 num">{fmt(s.balance)}</td>
-                <td className="p-3"><Button size="sm" variant="outline" onClick={() => { setEdit(s); setOpen(true); }}><Edit size={14}/></Button></td>
+                <td className="p-3 flex gap-1"><Button size="sm" variant="outline" onClick={() => printSupplierStatement(s)}><Printer size={14}/></Button><Button size="sm" variant="outline" onClick={() => { setEdit(s); setOpen(true); }}><Edit size={14}/></Button></td>
               </tr>
             ))}
             {items.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400">لا يوجد موردين</td></tr>}
@@ -79,7 +86,7 @@ export default function Suppliers() {
                 <div className="font-bold truncate">{s.name}</div>
                 <div className="text-xs text-slate-500 truncate">{s.phone}</div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => { setEdit(s); setOpen(true); }} className="shrink-0"><Edit size={14}/></Button>
+              <div className="flex gap-1 shrink-0"><Button size="sm" variant="outline" onClick={() => printSupplierStatement(s)}><Printer size={14}/></Button><Button size="sm" variant="outline" onClick={() => { setEdit(s); setOpen(true); }}><Edit size={14}/></Button></div>
             </div>
             <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
               <div><div className="text-slate-500">السقف</div><div className="num font-bold">{fmt(s.credit_limit)}</div></div>
